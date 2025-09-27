@@ -1,103 +1,250 @@
-import Image from "next/image";
+'use client';
+
+import { useEffect, useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Plus, Calendar, Settings } from 'lucide-react';
+import { useDemo } from '@/contexts/DemoContext';
+import { usePet } from '@/contexts/PetContext';
+import { AvatarDisplay } from '@/components/AvatarDisplay';
+import { PetDashboard } from '@/components/PetDashboard';
+import { getFeedbackMessage } from '@/lib/avatar-logic';
+
+function HomeContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { state } = useDemo();
+  const { pet, updateStreak } = usePet();
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [feedbackMessage, setFeedbackMessage] = useState('');
+
+  // Check for food logging feedback
+  useEffect(() => {
+    if (searchParams.get('logged') === 'true') {
+      const latestLog = state.foodLogs[state.foodLogs.length - 1];
+      if (latestLog) {
+        const message = getFeedbackMessage(latestLog.calories);
+        setFeedbackMessage(message);
+        setShowFeedback(true);
+
+        // Clear feedback after 3 seconds
+        setTimeout(() => {
+          setShowFeedback(false);
+          // Clear URL parameter
+          router.replace('/');
+        }, 3000);
+      }
+    }
+  }, [searchParams, state.foodLogs, router]);
+
+  // Redirect to onboarding if not completed
+  useEffect(() => {
+    if (!state.isOnboardingComplete) {
+      router.push('/onboarding');
+    }
+  }, [state.isOnboardingComplete, router]);
+
+  if (!state.isOnboardingComplete || !state.preferences || !state.progress) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-yellow-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-6xl mb-4">🐾</div>
+          <p>Loading your HabitPet...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const todayCalories = state.foodLogs
+    .filter(log => {
+      const today = new Date();
+      const logDate = new Date(log.logged_at);
+      return logDate.toDateString() === today.toDateString();
+    })
+    .reduce((sum, log) => sum + log.calories, 0);
+
+  const weekCalories = state.foodLogs
+    .filter(log => {
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 6);
+      const logDate = new Date(log.logged_at);
+      return logDate >= weekAgo;
+    })
+    .reduce((sum, log) => sum + log.calories, 0);
+
+  const avatarStats = {
+    dailyProgress: state.progress.daily_progress,
+    weeklyProgress: state.progress.weekly_progress,
+    currentStreak: state.progress.current_streak,
+    level: state.progress.level,
+    totalCaloriesLogged: state.foodLogs.reduce((sum, log) => sum + log.calories, 0),
+    dailyGoal: state.preferences.daily_calorie_goal,
+    weeklyGoal: state.preferences.weekly_calorie_goal,
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-green-50 to-yellow-50">
+      {/* Header */}
+      <div className="bg-white shadow-sm">
+        <div className="max-w-md mx-auto px-4 py-4 flex items-center justify-between">
+          <h1 className="text-xl font-bold text-green-600">HabitPet</h1>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="max-w-md mx-auto p-4 space-y-6 pb-24">
+        {/* Avatar Section */}
+        <AvatarDisplay
+          stats={avatarStats}
+          showFeedback={showFeedback}
+          feedbackMessage={feedbackMessage}
+        />
+
+        {/* Add Food Button - Big Button */}
+        <div className="w-full">
+          <Button
+            size="lg"
+            className="w-full h-16 bg-green-500 hover:bg-green-600 text-white text-lg font-semibold rounded-xl shadow-lg"
+            onClick={() => router.push('/add-food')}
+          >
+            🍎 Add Food
+          </Button>
+        </div>
+
+        {/* Pet Dashboard */}
+        <PetDashboard />
+
+        {/* Progress Bars */}
+        <div className="space-y-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm text-gray-600">Daily Progress</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="w-full bg-gray-200 rounded-full h-3">
+                <div
+                  className="bg-green-500 h-3 rounded-full transition-all duration-1000"
+                  style={{ width: `${Math.min(state.progress.daily_progress, 100)}%` }}
+                ></div>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                {todayCalories} / {state.preferences.daily_calorie_goal} calories
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm text-gray-600">Weekly Progress</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="w-full bg-gray-200 rounded-full h-3">
+                <div
+                  className="bg-yellow-500 h-3 rounded-full transition-all duration-1000"
+                  style={{ width: `${Math.min(state.progress.weekly_progress, 100)}%` }}
+                ></div>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                {weekCalories} / {state.preferences.weekly_calorie_goal} calories
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Quick Stats */}
+        <div className="grid grid-cols-3 gap-4">
+          <Card className="text-center p-4">
+            <div className="text-2xl font-bold text-green-600">{state.progress.level}</div>
+            <div className="text-xs text-gray-500">Level</div>
+          </Card>
+          <Card className="text-center p-4">
+            <div className="text-2xl font-bold text-orange-600">{state.progress.current_streak}</div>
+            <div className="text-xs text-gray-500">Day Streak</div>
+          </Card>
+          <Card className="text-center p-4">
+            <div className="text-2xl font-bold text-blue-600">{state.foodLogs.length}</div>
+            <div className="text-xs text-gray-500">Total Logs</div>
+          </Card>
+        </div>
+
+        {/* Recent Activity */}
+        {state.foodLogs.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm text-gray-600">Recent Activity</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {state.foodLogs
+                  .slice(-3)
+                  .reverse()
+                  .map((log) => (
+                    <div key={log.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xl">{log.emoji}</span>
+                        <span className="text-sm font-medium">{log.food_type}</span>
+                      </div>
+                      <span className="text-sm text-green-600 font-semibold">{log.calories} cal</span>
+                    </div>
+                  ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Add Food Button */}
+        <div className="fixed bottom-20 right-4">
+          <Button
+            size="lg"
+            className="w-16 h-16 rounded-full bg-green-500 hover:bg-green-600 shadow-lg"
+            onClick={() => router.push('/add-food')}
+          >
+            <Plus className="w-8 h-8" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Bottom Navigation */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t">
+        <div className="max-w-md mx-auto flex">
+          <Button variant="ghost" className="flex-1 py-4 flex flex-col gap-1">
+            <div className="w-6 h-6 bg-green-500 rounded"></div>
+            <span className="text-xs text-green-600 font-medium">Home</span>
+          </Button>
+          <Button
+            variant="ghost"
+            className="flex-1 py-4 flex flex-col gap-1"
+            onClick={() => router.push('/history')}
+          >
+            <Calendar className="w-6 h-6" />
+            <span className="text-xs">History</span>
+          </Button>
+          <Button
+            variant="ghost"
+            className="flex-1 py-4 flex flex-col gap-1"
+            onClick={() => router.push('/settings')}
+          >
+            <Settings className="w-6 h-6" />
+            <span className="text-xs">Settings</span>
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Home() {
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-yellow-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-6xl mb-4">🐾</div>
+          <p>Loading your HabitPet...</p>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+      </div>
+    }>
+      <HomeContent />
+    </Suspense>
   );
 }
