@@ -214,7 +214,7 @@ To use this project with [v0.dev](https://v0.dev):
 
 ## Deployment
 
-### Vercel (Recommended)
+### Vercel
 1. Push to GitHub
 2. Connect to Vercel
 3. Add environment variables
