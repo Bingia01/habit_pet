@@ -220,6 +220,8 @@ To use this project with [v0.dev](https://v0.dev):
 3. Add environment variables
 4. Deploy
 
+**Status:** ✅ Production deployment active
+
 ### Other Platforms
 Ensure environment variables are set:
 - `NEXT_PUBLIC_SUPABASE_URL`
