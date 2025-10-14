@@ -1,0 +1,11 @@
+{
+  "": {
+    "swift-dependencies": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKitTests.build/master.swiftdeps"
+  },
+  "/Users/wutthichaiupatising/habit_pet/calorie-camera/Tests/CalorieCameraKitTests/FusionEngineTests.swift": {
+    "dependencies": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKitTests.build/FusionEngineTests.d",
+    "object": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKitTests.build/FusionEngineTests.swift.o",
+    "swiftmodule": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKitTests.build/FusionEngineTests~partial.swiftmodule",
+    "swift-dependencies": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKitTests.build/FusionEngineTests.swiftdeps"
+  }
+}

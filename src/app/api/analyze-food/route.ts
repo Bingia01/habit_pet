@@ -1,294 +1,334 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Buffer } from 'node:buffer';
+import { z } from 'zod';
 
-// Food recognition using Clarifai API
+import { stubAnalyzer } from '@/lib/analyzers/stub';
+import { supabaseAnalyzer } from '@/lib/analyzers/supabase';
+import { openAIAnalyzer } from '@/lib/analyzers/openai';
+import type { Analyzer, AnalyzerSource, AnalyzeInput, AnalyzeOutput } from '@/lib/types/analyzer';
+
+export const runtime = 'nodejs';
+
+const RequestSchema = z.object({
+  imageUrl: z.string().url().optional(),
+  imageBase64: z
+    .string()
+    .regex(/^[A-Za-z0-9+/]+=*$/, 'imageBase64 must be base64 encoded')
+    .optional(),
+  region: z.string().optional(),
+});
+
+const ANALYZER_CHOICE = (process.env.ANALYZER_CHOICE ?? 'stub').toLowerCase();
+
 export async function POST(request: NextRequest) {
   try {
-    const formData = await request.formData();
-    const image = formData.get('image') as File;
-    
-    if (!image) {
+    const { imageBase64, imageUrl, region, errorResponse } = await extractInput(request);
+
+    if (errorResponse) {
+      return errorResponse;
+    }
+
+    if (!imageBase64 && !imageUrl) {
       return NextResponse.json({ error: 'No image provided' }, { status: 400 });
     }
 
-    // Convert image to base64
-    const buffer = await image.arrayBuffer();
-    const base64 = Buffer.from(buffer).toString('base64');
+    const analyzer = resolveAnalyzer(ANALYZER_CHOICE);
 
-    // Call Clarifai Food Recognition API with user_app_id
-    const response = await fetch('https://api.clarifai.com/v2/models/food-item-recognition/outputs', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Key ${process.env.CLARIFAI_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        user_app_id: {
-          user_id: process.env.CLARIFAI_USER_ID || 'clarifai',
-          app_id: process.env.CLARIFAI_APP_ID || 'main'
-        },
-        inputs: [{
-          data: {
-            image: { 
-              base64: base64
-            }
-          }
-        }]
-      })
+    const baseInput: AnalyzeInput = {
+      imageBase64,
+      imageUrl,
+      region,
+    };
+
+    const analysis = await tryAnalyze(analyzer, baseInput);
+    const payload = mapToLegacyResponse(analysis);
+
+    const response = NextResponse.json(payload, {
+      status: 200,
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Clarifai API error:', response.status, errorText);
-      throw new Error(`Clarifai API error: ${response.status} - ${errorText}`);
-    }
-
-    const result = await response.json();
-    console.log('Clarifai API response:', JSON.stringify(result, null, 2));
-    
-    // Process the results
-    const concepts = result.outputs?.[0]?.data?.concepts || [];
-    
-    if (concepts.length === 0) {
-      return NextResponse.json({
-        success: false,
-        message: 'No food items detected in the image'
-      });
-    }
-
-    // Get the most confident food item
-    const topFood = concepts[0];
-    const foodName = topFood.name;
-    const confidence = Math.round(topFood.value * 100);
-
-    // Estimate calories based on food type
-    const calories = estimateCalories(foodName);
-    
-    // Get portion size suggestions
-    const portionSizes = getPortionSizes(foodName);
-
-    return NextResponse.json({
-      foodType: foodName,
-      confidence: confidence / 100, // Convert to decimal (0-1)
-      calories: calories,
-      weight: estimateWeight(foodName), // Add weight estimation
-      emoji: getFoodEmoji(foodName),
-      portionSizes: portionSizes
-    });
-
+    response.headers.set('Cache-Control', 'no-store, max-age=0');
+    return response;
   } catch (error) {
-    console.error('Food analysis error:', error);
-    return NextResponse.json({ 
-      success: false,
-      error: 'Failed to analyze food image' 
-    }, { status: 500 });
+    console.error('[analyze-food] fatal error', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to analyze food image' },
+      { status: 500 },
+    );
   }
 }
 
-// Calorie estimation based on food type
+async function extractInput(request: NextRequest) {
+  const contentType = request.headers.get('content-type') ?? '';
+
+  if (contentType.includes('multipart/form-data')) {
+    const formData = await request.formData();
+    const file = formData.get('image');
+
+    if (!(file instanceof File)) {
+      return {
+        imageBase64: undefined,
+        imageUrl: undefined,
+        region: undefined,
+        errorResponse: NextResponse.json({ error: 'No image provided' }, { status: 400 }),
+      };
+    }
+
+    const arrayBuffer = await file.arrayBuffer();
+    const imageBase64 = Buffer.from(arrayBuffer).toString('base64');
+    const region = formData.get('region')?.toString();
+    return { imageBase64, imageUrl: undefined, region, errorResponse: null };
+  }
+
+  let json: unknown;
+  try {
+    json = await request.json();
+  } catch {
+    return {
+      imageBase64: undefined,
+      imageUrl: undefined,
+      region: undefined,
+      errorResponse: NextResponse.json({ error: 'Invalid request body' }, { status: 400 }),
+    };
+  }
+
+  const parsed = RequestSchema.safeParse(json);
+
+  if (!parsed.success) {
+    return {
+      imageBase64: undefined,
+      imageUrl: undefined,
+      region: undefined,
+      errorResponse: NextResponse.json(
+        { error: 'Invalid payload', details: parsed.error.flatten() },
+        { status: 400 },
+      ),
+    };
+  }
+
+  const { imageBase64, imageUrl, region } = parsed.data;
+  return { imageBase64, imageUrl, region, errorResponse: null };
+}
+
+function resolveAnalyzer(choice: string): Analyzer {
+  switch (choice) {
+    case 'supabase':
+      return supabaseAnalyzer;
+    case 'openai':
+    case 'openai-vision':
+      return openAIAnalyzer;
+    default:
+      return stubAnalyzer;
+  }
+}
+
+async function tryAnalyze(analyzer: Analyzer, input: AnalyzeInput): Promise<AnalyzeOutput> {
+  try {
+    return await analyzer.analyze(input);
+  } catch (error) {
+    console.warn('[analyze-food] analyzer failed, falling back to stub', error);
+    return stubAnalyzer.analyze(input);
+  }
+}
+
+function mapToLegacyResponse(result: AnalyzeOutput) {
+  const used =
+    result.meta?.used && result.meta.used.length > 0 ? result.meta.used : (['stub'] satisfies AnalyzerSource[]);
+  const topItem = result.items[0];
+  const foodName = topItem?.label ?? 'Food Item';
+  const confidence = clamp(topItem?.confidence ?? 0.6, 0, 1);
+
+  const calories =
+    typeof topItem?.calories === 'number'
+      ? Math.round(topItem.calories)
+      : estimateCalories(foodName);
+
+  const weight =
+    typeof topItem?.weightGrams === 'number'
+      ? Math.round(topItem.weightGrams)
+      : estimateWeight(foodName);
+
+  return {
+    foodType: foodName,
+    confidence,
+    calories,
+    weight,
+    emoji: getFoodEmoji(foodName),
+    portionSizes: getPortionSizes(foodName),
+    evidence: Array.from(new Set([...(topItem?.evidence ?? []), ...used])),
+    meta: {
+      used,
+      latencyMs: result.meta?.latencyMs ?? null,
+    },
+  };
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
 function estimateCalories(foodName: string): number {
-  const foodCalories: { [key: string]: number } = {
-    // Fruits
-    'apple': 95,
-    'banana': 105,
-    'orange': 62,
-    'grape': 62,
-    'strawberry': 4,
-    'blueberry': 4,
-    'avocado': 234,
-    
-    // Vegetables
-    'broccoli': 55,
-    'carrot': 25,
-    'lettuce': 5,
-    'tomato': 18,
-    'cucumber': 16,
-    'spinach': 7,
-    'potato': 77,
+  const foodCalories: Record<string, number> = {
+    apple: 95,
+    banana: 105,
+    orange: 62,
+    grape: 62,
+    strawberry: 4,
+    blueberry: 4,
+    avocado: 234,
+    broccoli: 55,
+    carrot: 25,
+    lettuce: 5,
+    tomato: 18,
+    cucumber: 16,
+    spinach: 7,
+    potato: 77,
     'sweet potato': 86,
-    
-    // Proteins
-    'chicken': 165,
-    'beef': 250,
-    'fish': 206,
-    'salmon': 206,
-    'egg': 70,
-    'tofu': 94,
-    'cheese': 113,
-    
-    // Grains
-    'rice': 130,
-    'bread': 80,
-    'pasta': 131,
-    'quinoa': 120,
-    'oats': 154,
-    
-    // Dairy
-    'milk': 42,
-    'yogurt': 59,
-    'butter': 102,
-    
-    // Nuts
-    'almond': 7,
-    'walnut': 49,
-    'peanut': 6,
-    
-    // Default
-    'default': 100
+    chicken: 165,
+    beef: 250,
+    fish: 206,
+    salmon: 206,
+    egg: 70,
+    tofu: 94,
+    cheese: 113,
+    rice: 130,
+    bread: 80,
+    pasta: 131,
+    quinoa: 120,
+    oats: 154,
+    milk: 42,
+    yogurt: 59,
+    butter: 102,
+    almond: 7,
+    walnut: 49,
+    peanut: 6,
+    default: 100,
   };
 
   const normalizedName = foodName.toLowerCase().trim();
-  
-  // Try exact match first
   if (foodCalories[normalizedName]) {
     return foodCalories[normalizedName];
   }
-  
-  // Try partial matches
+
   for (const [key, calories] of Object.entries(foodCalories)) {
     if (normalizedName.includes(key) || key.includes(normalizedName)) {
       return calories;
     }
   }
-  
-  return 100; // Default calories
+  return foodCalories.default;
 }
 
-// Weight estimation based on food type (in grams)
 function estimateWeight(foodName: string): number {
-  const foodWeights: { [key: string]: number } = {
-    // Fruits
-    'apple': 150,
-    'banana': 120,
-    'orange': 130,
-    'grape': 100,
-    'strawberry': 150,
-    'blueberry': 100,
-    'avocado': 200,
-    
-    // Vegetables
-    'broccoli': 100,
-    'carrot': 80,
-    'lettuce': 50,
-    'tomato': 120,
-    'cucumber': 100,
-    'spinach': 30,
-    'potato': 150,
+  const foodWeights: Record<string, number> = {
+    apple: 150,
+    banana: 120,
+    orange: 130,
+    grape: 100,
+    strawberry: 150,
+    blueberry: 100,
+    avocado: 200,
+    broccoli: 100,
+    carrot: 80,
+    lettuce: 50,
+    tomato: 120,
+    cucumber: 100,
+    spinach: 30,
+    potato: 150,
     'sweet potato': 130,
-    
-    // Proteins
-    'chicken': 100,
-    'beef': 100,
-    'fish': 100,
-    'salmon': 100,
-    'egg': 50,
-    'tofu': 100,
-    'cheese': 30,
-    
-    // Grains
-    'rice': 100,
-    'bread': 30,
-    'pasta': 100,
-    'quinoa': 100,
-    'oats': 40,
-    
-    // Dairy
-    'milk': 250,
-    'yogurt': 150,
-    'butter': 15,
-    
-    // Nuts
-    'almond': 10,
-    'walnut': 10,
-    'peanut': 10,
-    
-    // Default
-    'default': 100
+    chicken: 100,
+    beef: 100,
+    fish: 100,
+    salmon: 100,
+    egg: 50,
+    tofu: 100,
+    cheese: 30,
+    rice: 100,
+    bread: 30,
+    pasta: 100,
+    quinoa: 100,
+    oats: 40,
+    milk: 250,
+    yogurt: 150,
+    butter: 15,
+    almond: 10,
+    walnut: 10,
+    peanut: 10,
+    default: 100,
   };
 
   const normalizedName = foodName.toLowerCase().trim();
-  
-  // Try exact match first
   if (foodWeights[normalizedName]) {
     return foodWeights[normalizedName];
   }
-  
-  // Try partial matches
+
   for (const [key, weight] of Object.entries(foodWeights)) {
     if (normalizedName.includes(key) || key.includes(normalizedName)) {
       return weight;
     }
   }
-  
-  return 100; // Default weight in grams
+  return foodWeights.default;
 }
 
-// Portion size suggestions
 function getPortionSizes(foodName: string): string[] {
-  const portionMap: { [key: string]: string[] } = {
-    'apple': ['Small (80 cal)', 'Medium (95 cal)', 'Large (116 cal)'],
-    'banana': ['Small (90 cal)', 'Medium (105 cal)', 'Large (121 cal)'],
-    'chicken': ['3oz (140 cal)', '4oz (185 cal)', '6oz (280 cal)'],
-    'rice': ['1/2 cup (100 cal)', '1 cup (200 cal)', '1.5 cups (300 cal)'],
-    'bread': ['1 slice (80 cal)', '2 slices (160 cal)'],
-    'default': ['Small portion', 'Medium portion', 'Large portion']
+  const portionMap: Record<string, string[]> = {
+    apple: ['Small (80 cal)', 'Medium (95 cal)', 'Large (116 cal)'],
+    banana: ['Small (90 cal)', 'Medium (105 cal)', 'Large (121 cal)'],
+    chicken: ['3oz (140 cal)', '4oz (185 cal)', '6oz (280 cal)'],
+    rice: ['1/2 cup (100 cal)', '1 cup (200 cal)', '1.5 cups (300 cal)'],
+    bread: ['1 slice (80 cal)', '2 slices (160 cal)'],
+    default: ['Small portion', 'Medium portion', 'Large portion'],
   };
 
   const normalizedName = foodName.toLowerCase().trim();
-  
   for (const [key, portions] of Object.entries(portionMap)) {
     if (normalizedName.includes(key) || key.includes(normalizedName)) {
       return portions;
     }
   }
-  
   return portionMap.default;
 }
 
-// Get emoji for food
 function getFoodEmoji(foodName: string): string {
-  const emojiMap: { [key: string]: string } = {
-    'apple': '🍎',
-    'banana': '🍌',
-    'orange': '🍊',
-    'grape': '🍇',
-    'strawberry': '🍓',
-    'blueberry': '🫐',
-    'avocado': '🥑',
-    'broccoli': '🥦',
-    'carrot': '🥕',
-    'lettuce': '🥬',
-    'tomato': '🍅',
-    'cucumber': '🥒',
-    'spinach': '🥬',
-    'potato': '🥔',
+  const emojiMap: Record<string, string> = {
+    apple: '🍎',
+    banana: '🍌',
+    orange: '🍊',
+    grape: '🍇',
+    strawberry: '🍓',
+    blueberry: '🫐',
+    avocado: '🥑',
+    broccoli: '🥦',
+    carrot: '🥕',
+    lettuce: '🥬',
+    tomato: '🍅',
+    cucumber: '🥒',
+    spinach: '🥬',
+    potato: '🥔',
     'sweet potato': '🍠',
-    'chicken': '🍗',
-    'beef': '🥩',
-    'fish': '🐟',
-    'salmon': '🐟',
-    'egg': '🥚',
-    'tofu': '🧈',
-    'cheese': '🧀',
-    'rice': '🍚',
-    'bread': '🍞',
-    'pasta': '🍝',
-    'quinoa': '🌾',
-    'oats': '🌾',
-    'milk': '🥛',
-    'yogurt': '🥛',
-    'butter': '🧈',
-    'almond': '🥜',
-    'walnut': '🥜',
-    'peanut': '🥜'
+    chicken: '🍗',
+    beef: '🥩',
+    fish: '🐟',
+    salmon: '🐟',
+    egg: '🥚',
+    tofu: '🧈',
+    cheese: '🧀',
+    rice: '🍚',
+    bread: '🍞',
+    pasta: '🍝',
+    quinoa: '🌾',
+    oats: '🌾',
+    milk: '🥛',
+    yogurt: '🥛',
+    butter: '🧈',
+    almond: '🥜',
+    walnut: '🥜',
+    peanut: '🥜',
   };
 
   const normalizedName = foodName.toLowerCase().trim();
-  
   for (const [key, emoji] of Object.entries(emojiMap)) {
     if (normalizedName.includes(key) || key.includes(normalizedName)) {
       return emoji;
     }
   }
-  
-  return '🍽️'; // Default food emoji
+  return '🍽️';
 }

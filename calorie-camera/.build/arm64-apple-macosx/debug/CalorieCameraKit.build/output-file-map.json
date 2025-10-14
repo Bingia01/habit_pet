@@ -1,0 +1,47 @@
+{
+  "": {
+    "swift-dependencies": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKit.build/master.swiftdeps"
+  },
+  "/Users/wutthichaiupatising/habit_pet/calorie-camera/Sources/CalorieCameraKit/CaptureKit/MockCaptureService.swift": {
+    "dependencies": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKit.build/MockCaptureService.d",
+    "object": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKit.build/MockCaptureService.swift.o",
+    "swiftmodule": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKit.build/MockCaptureService~partial.swiftmodule",
+    "swift-dependencies": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKit.build/MockCaptureService.swiftdeps"
+  },
+  "/Users/wutthichaiupatising/habit_pet/calorie-camera/Sources/CalorieCameraKit/Core/Protocols.swift": {
+    "dependencies": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKit.build/Protocols.d",
+    "object": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKit.build/Protocols.swift.o",
+    "swiftmodule": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKit.build/Protocols~partial.swiftmodule",
+    "swift-dependencies": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKit.build/Protocols.swiftdeps"
+  },
+  "/Users/wutthichaiupatising/habit_pet/calorie-camera/Sources/CalorieCameraKit/Core/StatisticalTypes.swift": {
+    "dependencies": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKit.build/StatisticalTypes.d",
+    "object": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKit.build/StatisticalTypes.swift.o",
+    "swiftmodule": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKit.build/StatisticalTypes~partial.swiftmodule",
+    "swift-dependencies": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKit.build/StatisticalTypes.swiftdeps"
+  },
+  "/Users/wutthichaiupatising/habit_pet/calorie-camera/Sources/CalorieCameraKit/Core/Types.swift": {
+    "dependencies": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKit.build/Types.d",
+    "object": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKit.build/Types.swift.o",
+    "swiftmodule": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKit.build/Types~partial.swiftmodule",
+    "swift-dependencies": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKit.build/Types.swiftdeps"
+  },
+  "/Users/wutthichaiupatising/habit_pet/calorie-camera/Sources/CalorieCameraKit/Core/UpdatedProtocols.swift": {
+    "dependencies": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKit.build/UpdatedProtocols.d",
+    "object": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKit.build/UpdatedProtocols.swift.o",
+    "swiftmodule": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKit.build/UpdatedProtocols~partial.swiftmodule",
+    "swift-dependencies": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKit.build/UpdatedProtocols.swiftdeps"
+  },
+  "/Users/wutthichaiupatising/habit_pet/calorie-camera/Sources/CalorieCameraKit/FusionKit/FusionEngine.swift": {
+    "dependencies": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKit.build/FusionEngine.d",
+    "object": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKit.build/FusionEngine.swift.o",
+    "swiftmodule": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKit.build/FusionEngine~partial.swiftmodule",
+    "swift-dependencies": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKit.build/FusionEngine.swiftdeps"
+  },
+  "/Users/wutthichaiupatising/habit_pet/calorie-camera/Sources/CalorieCameraKit/PerceptionKit/Segmentation.swift": {
+    "dependencies": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKit.build/Segmentation.d",
+    "object": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKit.build/Segmentation.swift.o",
+    "swiftmodule": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKit.build/Segmentation~partial.swiftmodule",
+    "swift-dependencies": "/Users/wutthichaiupatising/habit_pet/calorie-camera/.build/arm64-apple-macosx/debug/CalorieCameraKit.build/Segmentation.swiftdeps"
+  }
+}

@@ -22,6 +22,8 @@ interface FinalCameraCaptureProps {
 export function FinalCameraCapture({ onCapture, onClose }: FinalCameraCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const capturedImageRef = useRef<string | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const [error, setError] = useState<string>('');
@@ -37,11 +39,16 @@ export function FinalCameraCapture({ onCapture, onClose }: FinalCameraCapturePro
   useEffect(() => {
     console.log('FinalCameraCapture mounted');
     startCamera();
-    
+
     return () => {
       console.log('FinalCameraCapture unmounting');
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+      if (capturedImageRef.current) {
+        URL.revokeObjectURL(capturedImageRef.current);
+        capturedImageRef.current = null;
       }
     };
   }, []);
@@ -50,16 +57,41 @@ export function FinalCameraCapture({ onCapture, onClose }: FinalCameraCapturePro
     try {
       setError('');
       console.log('Starting camera...');
-      
-      const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true });
+
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setError('Camera access is not supported in this browser. Please try Safari or Chrome.');
+        return;
+      }
+
+      const constraints: MediaStreamConstraints = {
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        },
+        audio: false
+      };
+
+      let mediaStream: MediaStream;
+
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (constraintError) {
+        console.warn('Advanced constraints failed, falling back to default camera request', constraintError);
+        mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      }
       console.log('Stream obtained:', mediaStream);
-      
+
       setStream(mediaStream);
-      
+      streamRef.current = mediaStream;
+
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
+        videoRef.current.setAttribute('playsinline', 'true');
+        videoRef.current.setAttribute('autoplay', 'true');
+        videoRef.current.setAttribute('muted', 'true');
         console.log('Video source set');
-        
+
         videoRef.current.onloadedmetadata = () => {
           console.log('Video metadata loaded');
           videoRef.current?.play();
@@ -67,7 +99,17 @@ export function FinalCameraCapture({ onCapture, onClose }: FinalCameraCapturePro
       }
     } catch (error) {
       console.error('Camera error:', error);
-      setError(`Camera error: ${error.message || error}`);
+      let message = 'Camera error. Please check permissions and try again.';
+      if (error instanceof DOMException) {
+        if (error.name === 'NotAllowedError') {
+          message = 'Camera permission denied. Please allow camera access in your browser settings.';
+        } else if (error.name === 'NotFoundError') {
+          message = 'No camera device found. Try connecting a camera or using a different device.';
+        } else if (error.name === 'NotReadableError') {
+          message = 'Camera is already in use by another application. Close other apps using the camera.';
+        }
+      }
+      setError(message);
     }
   };
 
@@ -91,10 +133,14 @@ export function FinalCameraCapture({ onCapture, onClose }: FinalCameraCapturePro
 
     canvas.toBlob((blob) => {
       if (blob) {
+        if (capturedImageRef.current) {
+          URL.revokeObjectURL(capturedImageRef.current);
+        }
         const imageUrl = URL.createObjectURL(blob);
-        setCapturedImage(imageUrl);
         setShowPreview(true);
         setIsCapturing(false);
+        capturedImageRef.current = imageUrl;
+        setCapturedImage(imageUrl);
       }
     }, 'image/jpeg', 0.8);
   };
@@ -167,6 +213,10 @@ export function FinalCameraCapture({ onCapture, onClose }: FinalCameraCapturePro
   };
 
   const retakePhoto = async () => {
+    if (capturedImageRef.current) {
+      URL.revokeObjectURL(capturedImageRef.current);
+      capturedImageRef.current = null;
+    }
     setCapturedImage(null);
     setShowPreview(false);
     setShowAnalysis(false);
@@ -214,9 +264,17 @@ export function FinalCameraCapture({ onCapture, onClose }: FinalCameraCapturePro
 
   const stopCamera = () => {
     console.log('stopCamera called');
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-      setStream(null);
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    setStream(null);
+    if (capturedImageRef.current) {
+      URL.revokeObjectURL(capturedImageRef.current);
+      capturedImageRef.current = null;
+    }
+    if (capturedImage) {
+      setCapturedImage(null);
     }
     onClose();
   };
