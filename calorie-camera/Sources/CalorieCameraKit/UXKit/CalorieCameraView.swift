@@ -1,5 +1,8 @@
 import SwiftUI
 import Foundation
+#if canImport(AVFoundation)
+import AVFoundation
+#endif
 
 /// Public SwiftUI surface for CalorieCameraKit that reacts to feature flags.
 public struct CalorieCameraView: View {
@@ -25,6 +28,18 @@ public struct CalorieCameraView: View {
 
     public var body: some View {
         VStack(spacing: 16) {
+#if canImport(AVFoundation) && canImport(UIKit)
+            CameraPreviewSurface(
+                session: coordinator.previewSession,
+                status: coordinator.statusMessage
+            )
+#else
+            CameraPreviewPlaceholder(status: coordinator.statusMessage)
+                .frame(height: 320)
+                .frame(maxWidth: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+#endif
+
             Text("Calorie Camera")
                 .font(.title2)
                 .bold()
@@ -131,6 +146,9 @@ public struct CalorieCameraView: View {
         .task {
             await coordinator.prepareSessionIfNeeded()
         }
+        .onDisappear {
+            coordinator.teardown()
+        }
     }
 }
 
@@ -147,12 +165,19 @@ private final class CalorieCameraCoordinator: ObservableObject {
         case failed(String)
     }
 
+    private enum CaptureCoordinatorError: Error {
+        case cameraUnavailable
+    }
+
     @Published private(set) var state: State = .idle
     @Published private(set) var statusMessage: String = "Preparing capture…"
     @Published private(set) var activePaths: [AnalysisPath] = []
     @Published private(set) var voiQuestion: String?
     @Published private(set) var lastResult: CalorieResult?
     @Published private(set) var qualityProgress: Double = 0.0
+    #if canImport(AVFoundation) && canImport(UIKit)
+    @Published private(set) var previewSession: AVCaptureSession?
+    #endif
 
     var canStartCapture: Bool {
         switch state {
@@ -185,8 +210,10 @@ private final class CalorieCameraCoordinator: ObservableObject {
     private let onResult: (CalorieResult) -> Void
     private let onCancel: (() -> Void)?
     private let qualityEstimator: CaptureQualityEstimator
+    private let frameCaptureService: FrameCaptureService?
     private let analyzerClient: AnalyzerClient?
     private let routerEngine: AnalyzerRouter
+    private let geometryEstimator: GeometryEstimator
     private var pendingResult: CalorieResult?
     private var askedQuestions = 0
 
@@ -201,6 +228,17 @@ private final class CalorieCameraCoordinator: ObservableObject {
         self.qualityEstimator = CaptureQualityEstimator(parameters: config.captureQuality)
         self.analyzerClient = CalorieCameraCoordinator.makeAnalyzerClient()
         self.routerEngine = AnalyzerRouter(config: config)
+        self.geometryEstimator = GeometryEstimator()
+        self.frameCaptureService = CalorieCameraCoordinator.makeCaptureService()
+
+        // Debug - show on screen if analyzer client is nil
+        if self.analyzerClient == nil {
+            statusMessage = "⚠️ ANALYZER CLIENT IS NIL - NO API CALLS"
+            NSLog("❌❌❌ ANALYZER CLIENT IS NIL - NO API CALLS WILL BE MADE ❌❌❌")
+        } else {
+            NSLog("✅✅✅ ANALYZER CLIENT CREATED SUCCESSFULLY ✅✅✅")
+        }
+
         updateActivePaths()
     }
 
@@ -209,6 +247,24 @@ private final class CalorieCameraCoordinator: ObservableObject {
         statusMessage = "Calibrate camera and hold steady."
         qualityEstimator.reset()
         qualityProgress = 0.0
+        do {
+            if let captureService = frameCaptureService {
+                guard captureService.isCameraAvailable() else {
+                    throw CaptureCoordinatorError.cameraUnavailable
+                }
+                try await captureService.requestPermissions()
+                try await captureService.startSession()
+#if canImport(AVFoundation) && canImport(UIKit)
+                if let previewProvider = captureService as? CameraPreviewProviding {
+                    previewSession = previewProvider.previewSession
+                }
+#endif
+            }
+        } catch {
+            state = .failed("Camera unavailable. Allow camera access in Settings.")
+            statusMessage = "Camera access required."
+            return
+        }
         do {
             try await Task.sleep(for: .milliseconds(120))
         } catch { }
@@ -253,6 +309,18 @@ private final class CalorieCameraCoordinator: ObservableObject {
         }
     }
 
+    func teardown() {
+        frameCaptureService?.stopSession()
+        qualityEstimator.reset()
+        qualityProgress = 0.0
+        pendingResult = nil
+        voiQuestion = nil
+#if canImport(AVFoundation) && canImport(UIKit)
+        previewSession = nil
+#endif
+        state = .idle
+    }
+
     private func capture() async {
         state = .capturing
         qualityEstimator.reset()
@@ -266,30 +334,54 @@ private final class CalorieCameraCoordinator: ObservableObject {
             statusMessage = "Analyzing best-effort capture…"
         }
 
-        let geometryPath = PathEstimate(
-            path: .geometry,
-            mu: 430,
-            sigma: 70,
-            evidence: ["Depth"]
-        )
-
-        var analyzerObservation: AnalyzerObservation?
-        if let analyzerClient {
+        var capturedFrame: CapturedFrame?
+        if let captureService = frameCaptureService {
             do {
-                analyzerObservation = try await analyzerClient.analyze(
-                    imageData: placeholderImageData(),
-                    mimeType: "image/png"
-                )
+                capturedFrame = try await captureService.captureFrame()
             } catch {
-                print("[CalorieCamera] analyzer request failed:", error)
+                print("[CalorieCamera] frame capture failed:", error)
             }
         }
 
-        let geometryEstimate = GeometryEstimate(
-            label: geometryPath.path.displayName,
-            calories: geometryPath.mu,
-            sigma: geometryPath.sigma,
-            evidence: geometryPath.evidence
+        var analyzerObservation: AnalyzerObservation?
+        var apiErrorMessage: String?
+        if let analyzerClient {
+            NSLog("🔄 Making API call to analyzer...")
+            statusMessage = "Calling API..."
+            do {
+                if let frameData = capturedFrame?.rgbImage {
+                    NSLog("📸 Sending RGB image (\(frameData.count) bytes)")
+                    analyzerObservation = try await analyzerClient.analyze(
+                        imageData: frameData,
+                        mimeType: "image/jpeg"
+                    )
+                } else {
+                    NSLog("🖼️ Sending placeholder image")
+                    analyzerObservation = try await analyzerClient.analyze(
+                        imageData: placeholderImageData(),
+                        mimeType: "image/png"
+                    )
+                }
+                NSLog("✅ API SUCCESS! Path: \(analyzerObservation?.path?.rawValue ?? "nil")")
+                statusMessage = "API succeeded!"
+            } catch {
+                NSLog("❌ API FAILED: \(error)")
+                apiErrorMessage = "\(error)"
+                statusMessage = "API failed: \(error)"
+                if let analyzerError = error as? AnalyzerClientError {
+                    NSLog("❌ Error details: \(analyzerError.localizedDescription)")
+                }
+            }
+        } else {
+            NSLog("⚠️ analyzerClient is nil")
+            statusMessage = "No analyzer client"
+        }
+
+        // Use VLM-provided priors in geometry calculation if available
+        // Pass full priors struct to enable proper uncertainty propagation
+        let geometryEstimate = geometryEstimator.estimate(
+            from: capturedFrame,
+            priors: analyzerObservation?.priors
         )
 
         let fusion = routerEngine.fuse(
@@ -297,30 +389,15 @@ private final class CalorieCameraCoordinator: ObservableObject {
             analyzerObservation: analyzerObservation
         )
 
-        let finalLabel = analyzerObservation?.label ?? geometryPath.path.displayName
-        let finalEvidence = Array(
-            Set(
-                fusion.evidence
-                    + geometryPath.evidence
-                    + (analyzerObservation?.evidence ?? [])
-            )
-        ).sorted()
+        let finalLabel = analyzerObservation?.label ?? geometryEstimate.label
+        let finalEvidence = Array(Set(fusion.evidence + (analyzerObservation?.evidence ?? []))).sorted()
 
         let finalCalories = fusion.fusedCalories
         let finalSigma = fusion.fusedSigma
 
-        let finalPath: AnalysisPath
-        if config.flags.mixtureEnabled, analyzerObservation != nil {
-            finalPath = .mixture
-        } else if analyzerObservation != nil {
-            finalPath = .analyzer
-        } else {
-            finalPath = .geometry
-        }
-
         let item = ItemEstimate(
             label: finalLabel,
-            volumeML: 360,
+            volumeML: geometryEstimate.volumeML,
             calories: finalCalories,
             sigma: finalSigma,
             evidence: finalEvidence
@@ -331,8 +408,29 @@ private final class CalorieCameraCoordinator: ObservableObject {
             total: (mu: finalCalories, sigma: finalSigma)
         )
 
-        if finalPath == .analyzer || finalPath == .mixture {
-            statusMessage = "Analyzer results fused."
+        // Debug output - ALWAYS prints
+        NSLog("═══════════════════════════════════════")
+        NSLog("DEBUG: Final Result")
+        NSLog("Label: \(finalLabel)")
+        NSLog("Calories: \(finalCalories)")
+        NSLog("Evidence: \(finalEvidence)")
+        NSLog("Analyzer observation: \(analyzerObservation != nil ? "YES" : "NO")")
+        if let obs = analyzerObservation {
+            NSLog("  - Path: \(obs.path?.rawValue ?? "nil")")
+            NSLog("  - Priors: \(obs.priors != nil ? "YES" : "NO")")
+            NSLog("  - Calories from backend: \(obs.calories ?? -1)")
+            NSLog("  - SigmaCalories from backend: \(obs.sigmaCalories ?? -1)")
+        }
+        NSLog("Geometry calories: \(geometryEstimate.calories)")
+        NSLog("Fusion fusedCalories: \(fusion.fusedCalories)")
+        NSLog("═══════════════════════════════════════")
+
+        if analyzerObservation != nil {
+            statusMessage = "✅ API worked! Path: \(analyzerObservation?.path?.rawValue ?? "?")"
+        } else if apiErrorMessage != nil {
+            statusMessage = "❌ API ERROR: \(apiErrorMessage?.prefix(50) ?? "unknown")"
+        } else {
+            statusMessage = "⚠️ API returned nil (no error but no result)"
         }
 
         if shouldAskVoI(for: result) {
@@ -402,21 +500,21 @@ private final class CalorieCameraCoordinator: ObservableObject {
     }
 
     private static func makeAnalyzerClient() -> AnalyzerClient? {
-        let environment = ProcessInfo.processInfo.environment
-        let candidates = [
-            environment["ANALYZER_BASE_URL"],
-            environment["WEB_BASE"]
-        ]
+        // HARDCODED CONFIG - bypassing environment variables
+        let baseURL = "https://uisjdlxdqfovuwurmdop.supabase.co/functions/v1"
+        let apiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVpc2pkbHhkcWZvdnV3dXJtZG9wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg5MDkyODYsImV4cCI6MjA3NDQ4NTI4Nn0.WaACHNXUWh5ZXKu5aZf1EjolXvWdD7R5mbNqBebnIuI"
 
-        guard
-            let urlString = candidates.compactMap({ $0 }).first,
-            let url = URL(string: urlString)
-        else {
+        guard let url = URL(string: baseURL) else {
+            NSLog("❌ Failed to create URL from hardcoded base URL")
             return nil
         }
 
+        NSLog("🚀 Creating HTTPAnalyzerClient with HARDCODED config")
+        NSLog("🚀 Base URL: %@", baseURL)
+        NSLog("🚀 API Key: SET")
+
         return HTTPAnalyzerClient(
-            configuration: .init(baseURL: url)
+            configuration: .init(baseURL: url, apiKey: apiKey)
         )
     }
 
@@ -428,6 +526,14 @@ private final class CalorieCameraCoordinator: ObservableObject {
 
     private func placeholderImageData() -> Data {
         Self.placeholderImage
+    }
+
+    private static func makeCaptureService() -> FrameCaptureService? {
+#if canImport(AVFoundation) && canImport(UIKit)
+        return SystemPhotoCaptureService()
+#else
+        return nil
+#endif
     }
 
     private func performQualityGate() async -> CaptureQualityStatus? {
@@ -495,13 +601,109 @@ private final class CalorieCameraCoordinator: ObservableObject {
     }
 }
 
-// MARK: - Helpers
+#if canImport(AVFoundation) && canImport(UIKit)
+private struct CameraPreviewSurface: View {
+    let session: AVCaptureSession?
+    let status: String
 
-private struct PathEstimate {
-    let path: AnalysisPath
-    let mu: Double
-    let sigma: Double
-    let evidence: [String]
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            if let session {
+                CameraPreviewContainer(session: session)
+                    .transition(.opacity.combined(with: .scale(scale: 1.02)))
+            } else {
+                CameraPreviewPlaceholder(status: status)
+            }
+            LinearGradient(
+                colors: [
+                    Color.black.opacity(0.0),
+                    Color.black.opacity(0.55)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .allowsHitTesting(false)
+            .opacity(session == nil ? 0.7 : 1.0)
+
+            Text(status)
+                .font(.footnote)
+                .foregroundStyle(Color.white.opacity(0.92))
+                .padding(12)
+        }
+        .frame(height: 320)
+        .frame(maxWidth: .infinity)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.08))
+        )
+        .animation(.easeInOut(duration: 0.25), value: session != nil)
+    }
+}
+
+@available(iOS 13.0, *)
+private struct CameraPreviewContainer: UIViewRepresentable {
+    final class PreviewView: UIView {
+        override class var layerClass: AnyClass {
+            AVCaptureVideoPreviewLayer.self
+        }
+
+        var videoPreviewLayer: AVCaptureVideoPreviewLayer {
+            // swiftlint:disable:next force_cast
+            layer as! AVCaptureVideoPreviewLayer
+        }
+    }
+
+    let session: AVCaptureSession
+
+    func makeUIView(context: Context) -> PreviewView {
+        let view = PreviewView()
+        configure(layer: view.videoPreviewLayer)
+        return view
+    }
+
+    func updateUIView(_ uiView: PreviewView, context: Context) {
+        if uiView.videoPreviewLayer.session !== session {
+            uiView.videoPreviewLayer.session = session
+        }
+        configure(layer: uiView.videoPreviewLayer)
+    }
+
+    private func configure(layer: AVCaptureVideoPreviewLayer) {
+        layer.session = session
+        layer.videoGravity = .resizeAspectFill
+        if layer.connection?.isVideoOrientationSupported == true {
+            layer.connection?.videoOrientation = .portrait
+        }
+    }
+}
+#endif
+
+private struct CameraPreviewPlaceholder: View {
+    let status: String
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color.black.opacity(0.6),
+                    Color.black.opacity(0.85)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            VStack(spacing: 12) {
+                Image(systemName: "camera.aperture")
+                    .font(.system(size: 42))
+                    .foregroundStyle(.white.opacity(0.8))
+                Text(status)
+                    .font(.footnote)
+                    .foregroundStyle(.white.opacity(0.75))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 16)
+            }
+        }
+    }
 }
 
 private enum AnalysisPath: String, CaseIterable, Identifiable {

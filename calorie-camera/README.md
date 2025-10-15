@@ -1,38 +1,71 @@
 # CalorieCameraKit
 
-A Swift Package for iOS that provides camera-based food detection and calorie tracking capabilities.
+A production-grade Swift Package for iOS that provides intelligent calorie estimation using three-path routing, delta method uncertainty propagation, and ARKit LiDAR depth sensing.
 
-## Features
+## ✨ Key Features
 
-- 📸 **CaptureKit**: Camera management and photo capture
-- 🧠 **PerceptionKit**: ML-based food detection and analysis
-- 🥗 **NutritionKit**: Nutrition database and food information
-- 🔄 **FusionKit**: Data fusion from multiple sources (ML, database, user input)
-- 🎨 **UXKit**: Pre-built UI components for camera and analysis views
+- 🛤️ **Three-Path Routing**: Label (OCR), Menu (database), Geometry (LiDAR + VLM)
+- 📐 **Delta Method**: Scientific uncertainty propagation
+- 📸 **ARKit LiDAR**: Depth-based volume estimation on iPhone Pro models
+- 🤖 **OpenAI Vision**: VLM-based food classification and priors
+- 📊 **Statistical Rigor**: Inverse-variance fusion with proper error propagation
+- 🎨 **SwiftUI Components**: Pre-built CalorieCameraView
 
-## Requirements
+## 🏗️ Architecture
 
-- iOS 16.0+ / macOS 13.0+
-- Xcode 14.0+
-- Swift 5.9+
+```
+Capture → Perception → Router → Fusion → Output
+   ↓          ↓          ↓         ↓        ↓
+ LiDAR    Geometry    Label     Delta   Result
++Photo   +Volume      Menu    Method   +Sigma
+                    Geometry
+```
 
-## Installation
+## 📋 Requirements
 
-### Swift Package Manager
+- **iOS 16.0+**
+- **Swift 5.9+**
+- **Xcode 14.0+**
+- **iPhone 12 Pro or later** (for LiDAR depth sensing)
+- **Backend API** (Supabase + OpenAI Vision)
 
-Add this package to your Xcode project:
+## 📦 Installation
 
-1. In Xcode, select **File** → **Add Package Dependencies**
-2. Enter the package URL (or use local path for development)
-3. Select the version you want to use
+### Option A: From GitHub (Recommended)
 
-Or add it to your `Package.swift`:
+This package is part of the HabitPet monorepo. Swift Package Manager automatically detects packages in subfolders.
+
+#### Using Xcode:
+1. **File → Add Package Dependencies...**
+2. Enter repository URL:
+   ```
+   https://github.com/Bingia01/habit_pet
+   ```
+3. Xcode will detect the `calorie-camera` package
+4. Select version (e.g., `1.0.0`)
+
+#### Using Package.swift:
+```swift
+dependencies: [
+    .package(url: "https://github.com/Bingia01/habit_pet", from: "1.0.0")
+]
+```
+
+### Option B: Local Package
+
+For development or private sharing:
 
 ```swift
 dependencies: [
-    .package(path: "../calorie-camera")
+    .package(path: "/path/to/calorie-camera")
 ]
 ```
+
+## 📚 Documentation
+
+- **[DISTRIBUTION.md](./DISTRIBUTION.md)** - Complete installation and usage guide
+- **[BACKEND_SETUP.md](./BACKEND_SETUP.md)** - Supabase deployment instructions
+- **[PRODUCTION_README.md](./PRODUCTION_README.md)** - Architecture deep dive
 
 ## Quick Start
 
