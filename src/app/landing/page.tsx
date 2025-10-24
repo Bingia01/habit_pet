@@ -63,7 +63,7 @@ export default function LandingPage() {
             <div className="hidden md:flex gap-4">
               <Button
                 variant="ghost"
-                onClick={() => router.push('/onboarding')}
+                onClick={() => router.push('#features')}
               >
                 Features
               </Button>
@@ -103,7 +103,7 @@ export default function LandingPage() {
                 <Button
                   size="lg"
                   className="h-14 px-8 bg-green-500 hover:bg-green-600 text-white text-lg font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all"
-                  onClick={() => router.push('/onboarding')}
+                  onClick={() => router.push('/dashboard')}
                 >
                   <Smartphone className="w-5 h-5 mr-2" />
                   Launch Web App
@@ -194,7 +194,7 @@ export default function LandingPage() {
       </section>
 
       {/* Features Section */}
-      <section className="bg-white py-20">
+      <section id="features" className="bg-white py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-gray-900 mb-4">
@@ -278,7 +278,7 @@ export default function LandingPage() {
             <Button
               size="lg"
               className="h-14 px-8 bg-white text-green-600 hover:bg-gray-100 text-lg font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all"
-              onClick={() => router.push('/onboarding')}
+              onClick={() => router.push('/dashboard')}
             >
               <Smartphone className="w-5 h-5 mr-2" />
               Try Web App Now

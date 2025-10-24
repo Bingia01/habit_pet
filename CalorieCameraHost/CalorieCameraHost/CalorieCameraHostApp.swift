@@ -6,12 +6,13 @@
 //
 
 import SwiftUI
+import CalorieCameraKit
 
 @main
 struct CalorieCameraHostApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            CameraHostRootView()
         }
     }
 }
