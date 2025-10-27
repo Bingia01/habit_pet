@@ -176,10 +176,13 @@ private final class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegat
             deviceOrientation: OrientationMapper.current
         )
 
+        // Extract camera intrinsics from calibration data
+        let intrinsics = IntrinsicsExtractor.extract(from: photo)
+
         let captured = CapturedFrame(
             rgbImage: data,
             depthData: DepthExtractor.depthData(from: photo),
-            cameraIntrinsics: nil,
+            cameraIntrinsics: intrinsics,
             metadata: metadata
         )
 
@@ -247,6 +250,34 @@ private enum DepthExtractor {
             depthMap: array.map { Float($0) },
             confidenceMap: nil,
             source: .lidar
+        )
+    }
+}
+
+private enum IntrinsicsExtractor {
+    static func extract(from photo: AVCapturePhoto) -> CameraIntrinsics? {
+        guard let calibrationData = photo.cameraCalibrationData else { return nil }
+
+        // Extract intrinsic matrix (3x3)
+        let intrinsicMatrix = calibrationData.intrinsicMatrix
+
+        // Focal lengths (fx, fy) from diagonal elements
+        let fx = Float(intrinsicMatrix.columns.0.x)
+        let fy = Float(intrinsicMatrix.columns.1.y)
+
+        // Principal point (cx, cy) from third column
+        let cx = Float(intrinsicMatrix.columns.2.x)
+        let cy = Float(intrinsicMatrix.columns.2.y)
+
+        // Image dimensions from calibration data
+        let dimensions = calibrationData.intrinsicMatrixReferenceDimensions
+        let width = Int(dimensions.width)
+        let height = Int(dimensions.height)
+
+        return CameraIntrinsics(
+            focalLength: SIMD2<Float>(fx, fy),
+            principalPoint: SIMD2<Float>(cx, cy),
+            imageSize: SIMD2<Int>(width, height)
         )
     }
 }

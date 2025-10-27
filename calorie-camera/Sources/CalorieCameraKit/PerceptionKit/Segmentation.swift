@@ -7,6 +7,10 @@ import simd
 import UIKit
 #endif
 
+#if canImport(Vision)
+import Vision
+#endif
+
 // MARK: - Segmentation Types
 
 /// A single segmented food instance
@@ -132,23 +136,83 @@ public struct PlaneEquation: Sendable {
 
 // MARK: - Default Implementations (Stubs)
 
-/// Default segmenter returns single "whole-plate" mask
+/// Vision-based segmenter using Apple's VNGenerateForegroundInstanceMaskRequest
 public final class DefaultSegmenter: Segmenter {
 
     public init() {}
 
     public func segment(frame: CapturedFrame) async throws -> [FoodInstanceMask] {
-        // TODO: Replace with CoreML segmentation model
-        // For now, return single mask covering whole image
-
         guard let cgImage = createCGImage(from: frame.rgbImage) else {
             throw CalorieCameraError.processingFailed("Cannot create image")
         }
 
-        let width = cgImage.width
-        let height = cgImage.height
+        // iOS 17+ Vision framework instance segmentation
+        if #available(iOS 17.0, macOS 14.0, *) {
+            return try await segmentWithVision(image: cgImage)
+        } else {
+            // Fallback to full-frame mask for older OS versions
+            return try segmentFullFrame(image: cgImage)
+        }
+    }
 
-        // Create full-frame mask
+    @available(iOS 17.0, macOS 14.0, *)
+    private func segmentWithVision(image: CGImage) async throws -> [FoodInstanceMask] {
+        #if canImport(Vision)
+        let request = VNGenerateForegroundInstanceMaskRequest()
+
+        let handler = VNImageRequestHandler(cgImage: image, options: [:])
+        try handler.perform([request])
+
+        guard let result = request.results?.first else {
+            // No instances detected, fall back to full frame
+            return try segmentFullFrame(image: image)
+        }
+
+        var masks: [FoodInstanceMask] = []
+
+        // Process each detected instance
+        for instance in result.allInstances {
+            do {
+                // Generate mask for this instance (returns CVPixelBuffer)
+                let instanceMask = try result.generateScaledMaskForImage(
+                    forInstances: [instance],
+                    from: handler
+                )
+
+                // Convert CVPixelBuffer to CGImage
+                guard let maskCGImage = convertPixelBufferToGrayscaleMask(instanceMask, size: CGSize(width: image.width, height: image.height)) else {
+                    continue
+                }
+
+                // Calculate bounding box
+                let bbox = calculateBoundingBox(maskImage: maskCGImage)
+
+                masks.append(FoodInstanceMask(
+                    maskImage: maskCGImage,
+                    confidence: Double(result.confidence),
+                    boundingBox: bbox
+                ))
+            } catch {
+                NSLog("Failed to generate mask for instance: \(error)")
+                continue
+            }
+        }
+
+        // If no valid masks, use full frame
+        if masks.isEmpty {
+            return try segmentFullFrame(image: image)
+        }
+
+        return masks
+        #else
+        // Vision not available, use full frame
+        return try segmentFullFrame(image: image)
+        #endif
+    }
+
+    private func segmentFullFrame(image: CGImage) throws -> [FoodInstanceMask] {
+        let width = image.width
+        let height = image.height
         let maskImage = try createFullMask(width: width, height: height)
 
         return [FoodInstanceMask(
@@ -195,9 +259,77 @@ public final class DefaultSegmenter: Segmenter {
         return nil
         #endif
     }
+
+    /// Convert CVPixelBuffer mask to grayscale CGImage
+    private func convertPixelBufferToGrayscaleMask(_ pixelBuffer: CVPixelBuffer, size: CGSize) -> CGImage? {
+        #if canImport(CoreImage)
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        let context = CIContext()
+        let extent = CGRect(origin: .zero, size: size)
+        return context.createCGImage(ciImage, from: extent)
+        #else
+        return nil
+        #endif
+    }
+
+    /// Convert CIImage mask to grayscale CGImage
+    private func convertToGrayscaleMask(_ ciImage: CIImage, size: CGSize) -> CGImage? {
+        #if canImport(CoreImage)
+        let context = CIContext()
+        let extent = CGRect(origin: .zero, size: size)
+        return context.createCGImage(ciImage, from: extent)
+        #else
+        return nil
+        #endif
+    }
+
+    /// Calculate bounding box from mask image
+    private func calculateBoundingBox(maskImage: CGImage) -> CGRect {
+        let width = maskImage.width
+        let height = maskImage.height
+
+        guard let dataProvider = maskImage.dataProvider,
+              let data = dataProvider.data,
+              let bytes = CFDataGetBytePtr(data) else {
+            return CGRect(x: 0, y: 0, width: 1, height: 1)
+        }
+
+        var minX = width
+        var maxX = 0
+        var minY = height
+        var maxY = 0
+        var foundPixel = false
+
+        for y in 0..<height {
+            for x in 0..<width {
+                let offset = y * maskImage.bytesPerRow + x
+                if offset < CFDataGetLength(data) && bytes[offset] > 128 {
+                    minX = min(minX, x)
+                    maxX = max(maxX, x)
+                    minY = min(minY, y)
+                    maxY = max(maxY, y)
+                    foundPixel = true
+                }
+            }
+        }
+
+        if !foundPixel {
+            return CGRect(x: 0, y: 0, width: 1, height: 1)
+        }
+
+        // Convert to normalized coordinates
+        return CGRect(
+            x: Double(minX) / Double(width),
+            y: Double(minY) / Double(height),
+            width: Double(maxX - minX) / Double(width),
+            height: Double(maxY - minY) / Double(height)
+        )
+    }
 }
 
-/// Default classifier returns mock result
+/// Default classifier returns generic result
+/// Note: Production apps should use cloud-based analyzer (HTTPAnalyzerClient)
+/// for accurate food classification. This is only used as a fallback.
 public final class DefaultClassifier: Classifier {
 
     public init() {}
@@ -206,12 +338,13 @@ public final class DefaultClassifier: Classifier {
         instance: FoodInstanceMask,
         frames: [FrameSample]
     ) async throws -> ClassResult {
-        // TODO: Replace with CoreML classification model
-        // For now, return mock classification
+        // Returns generic "food" label
+        // Real apps should use HTTPAnalyzerClient which calls OpenAI Vision
+        // via Supabase Edge Function for accurate classification
 
         return ClassResult(
-            topLabel: "rice:white_cooked",
-            confidence: 0.9,
+            topLabel: "food:unspecified",
+            confidence: 0.5,
             mixture: nil
         )
     }
@@ -293,8 +426,7 @@ public final class DefaultVolumeEstimator: VolumeEstimator {
 
                 guard idx < depthMap.count else { continue }
 
-                // Check if pixel is in mask (we approximate with bounding box for now)
-                // TODO: Read actual mask image pixels when available
+                // Check if pixel is in mask
                 let isInMask = isPixelInMask(x: x, y: y, mask: mask, width: width, height: height)
                 guard isInMask else { continue }
 
@@ -324,6 +456,9 @@ public final class DefaultVolumeEstimator: VolumeEstimator {
                 let signedDistance = referencePlane.distanceToPoint(point3D)
                 let height_m = max(0, -signedDistance) // Negate to get height
 
+                // Skip pixels with no height contribution
+                guard height_m > 0.001 else { continue } // At least 1mm height
+
                 // Calculate pixel area in world space at this depth
                 // Area ≈ (depth / focal_length)²
                 let pixelArea_m2 = pow(depthValue / fx, 2)
@@ -342,7 +477,7 @@ public final class DefaultVolumeEstimator: VolumeEstimator {
             }
         }
 
-        // Convert m³ to mL (1 m³ = 1,000,000 mL)
+        // Convert m³ to mL (1 m³ = 1,000_000 mL)
         let volumeML = Double(totalVolume_m3) * 1_000_000
 
         // Propagate uncertainty (root sum of squares)
@@ -431,24 +566,26 @@ public final class DefaultVolumeEstimator: VolumeEstimator {
 
     /// Read a single pixel value from grayscale mask image
     private func readMaskPixel(image: CGImage, x: Int, y: Int) -> UInt8? {
-        // Validate image format
+        // Validate image format - should be grayscale
         guard image.bitsPerComponent == 8,
-              image.bitsPerPixel == 8,
               let dataProvider = image.dataProvider,
-              let data = dataProvider.data else {
+              let data = dataProvider.data,
+              let bytes = CFDataGetBytePtr(data) else {
             return nil
         }
 
-        let bytes = CFDataGetBytePtr(data)
         let bytesPerRow = image.bytesPerRow
-        let offset = y * bytesPerRow + x
+        let bytesPerPixel = image.bitsPerPixel / 8
+
+        // Calculate offset based on actual bytes per pixel
+        let offset = y * bytesPerRow + x * bytesPerPixel
 
         // Bounds check
         guard offset >= 0 && offset < CFDataGetLength(data) else {
             return nil
         }
 
-        return bytes?[offset]
+        return bytes[offset]
     }
 
     /// Estimate plate plane from depth data
@@ -459,36 +596,45 @@ public final class DefaultVolumeEstimator: VolumeEstimator {
         height: Int,
         intrinsics: CameraIntrinsics
     ) -> PlaneEquation {
-        // Simple heuristic: Find minimum depth in bottom 20% of mask
-        // This approximates the plate surface
+        // Improved heuristic: Find maximum depth (farthest from camera)
+        // around the mask perimeter to locate the plate surface.
+        // Food is typically closer to camera than the plate it sits on.
 
         let bbox = mask.boundingBox
-        let xStart = Int(bbox.origin.x * CGFloat(width))
-        let yStart = Int((bbox.origin.y + bbox.height * 0.8) * CGFloat(height)) // Bottom 20%
-        let xEnd = Int((bbox.origin.x + bbox.width) * CGFloat(width))
-        let yEnd = Int((bbox.origin.y + bbox.height) * CGFloat(height))
 
-        var minDepth: Float = Float.infinity
+        // Expand search region slightly beyond mask to find surrounding plate
+        let margin: CGFloat = 0.1 // 10% margin around mask
+        let xStart = max(0, Int((bbox.origin.x - margin) * CGFloat(width)))
+        let yStart = max(0, Int((bbox.origin.y - margin) * CGFloat(height)))
+        let xEnd = min(width, Int((bbox.origin.x + bbox.width + margin) * CGFloat(width)))
+        let yEnd = min(height, Int((bbox.origin.y + bbox.height + margin) * CGFloat(height)))
 
-        for y in yStart..<min(yEnd, height) {
-            for x in xStart..<min(xEnd, width) {
+        var maxDepth: Float = 0.0
+        var validDepthCount = 0
+
+        // Sample depths in the expanded region
+        for y in yStart..<yEnd {
+            for x in xStart..<xEnd {
                 let idx = y * width + x
                 if idx < depthMap.count {
                     let depth = depthMap[idx]
                     if depth > 0.01 && depth < 5.0 {
-                        minDepth = min(minDepth, depth)
+                        // Take maximum depth as plate reference
+                        // (plate is farther from camera than food)
+                        maxDepth = max(maxDepth, depth)
+                        validDepthCount += 1
                     }
                 }
             }
         }
 
-        // Plate plane perpendicular to camera Z-axis at min depth
+        // Plate plane perpendicular to camera Z-axis at max depth
         // Normal pointing toward camera: (0, 0, 1)
         // Plane equation: n·p + d = 0
-        // For plane at z = minDepth: (0,0,1)·(x,y,z) + d = 0 → z + d = 0 → d = -minDepth
+        // For plane at z = maxDepth: (0,0,1)·(x,y,z) + d = 0 → z + d = 0 → d = -maxDepth
 
         // Handle case where no valid depth found
-        if minDepth.isInfinite {
+        if validDepthCount == 0 || maxDepth < 0.01 {
             // Default to 0.5m plate distance
             return PlaneEquation(
                 normal: SIMD3<Float>(0, 0, 1),
@@ -498,7 +644,7 @@ public final class DefaultVolumeEstimator: VolumeEstimator {
 
         return PlaneEquation(
             normal: SIMD3<Float>(0, 0, 1),
-            distance: -minDepth
+            distance: -maxDepth
         )
     }
 
