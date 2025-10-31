@@ -53,6 +53,13 @@ public struct AnalyzerRouter {
             config.flags.routerEnabled,
             let observation = analyzerObservation
         else {
+            if !config.flags.routerEnabled {
+                NSLog("⚠️ ROUTER DISABLED - Using geometry-only estimate: \(geometry.calories) ± \(geometry.sigma) kcal")
+                NSLog("⚠️ To use AI food recognition, enable router in CalorieConfig")
+            } else if analyzerObservation == nil {
+                NSLog("⚠️ NO ANALYZER OBSERVATION - Backend API may have failed, using geometry only")
+            }
+
             return AnalyzerFusionResult(
                 geometry: geometry,
                 routed: RoutedEstimate(

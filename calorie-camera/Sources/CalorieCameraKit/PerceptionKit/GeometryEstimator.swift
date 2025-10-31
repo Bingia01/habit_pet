@@ -2,6 +2,7 @@ import Foundation
 
 /// Lightweight depth-based geometry estimator with proper uncertainty propagation.
 /// Uses delta method to propagate volume, density, and energy uncertainties.
+/// Returns nil when depth data is unavailable - backend should provide 2D portion estimate instead.
 public final class GeometryEstimator {
     public struct Parameters {
         /// Estimated density in g/mL (default ~ water)
@@ -12,12 +13,8 @@ public final class GeometryEstimator {
         public let relativeVolumeSigma: Double
         /// Minimum σ if the relative value is too small
         public let minimumSigma: Double
-        /// Fallback calories if depth is unavailable
-        public let fallbackCalories: Double
         /// Evidence tags to attach when geometry succeeds
         public let evidence: [String]
-        /// Evidence tags when geometry falls back
-        public let fallbackEvidence: [String]
         /// Approximate real-world area represented by a single depth pixel (m²)
         public let pixelAreaEstimate: Double
 
@@ -26,18 +23,14 @@ public final class GeometryEstimator {
             energyPerGram: Double = 1.35,
             relativeVolumeSigma: Double = 0.25, // 25% volume uncertainty
             minimumSigma: Double = 80,
-            fallbackCalories: Double = 420,
             evidence: [String] = ["Geometry", "Depth"],
-            fallbackEvidence: [String] = ["Geometry", "Fallback"],
             pixelAreaEstimate: Double = 1.5e-6
         ) {
             self.density = density
             self.energyPerGram = energyPerGram
             self.relativeVolumeSigma = relativeVolumeSigma
             self.minimumSigma = minimumSigma
-            self.fallbackCalories = fallbackCalories
             self.evidence = evidence
-            self.fallbackEvidence = fallbackEvidence
             self.pixelAreaEstimate = pixelAreaEstimate
         }
     }
@@ -52,18 +45,23 @@ public final class GeometryEstimator {
 
     /// Estimate calories with proper uncertainty propagation using delta method
     ///
+    /// Returns nil if depth data is unavailable - in this case, the backend should
+    /// provide a 2D portion estimate based on visual analysis.
+    ///
     /// If VLM priors are provided, uses them with their uncertainties.
     /// Otherwise falls back to default priors.
     public func estimate(
         from frame: CapturedFrame?,
         priors: FoodPriors? = nil
-    ) -> GeometryEstimate {
+    ) -> GeometryEstimate? {
         guard
             let frame,
             let depthData = frame.depthData,
             !depthData.depthMap.isEmpty
         else {
-            return fallbackEstimate()
+            NSLog("⚠️ NO DEPTH DATA: Cannot calculate volume-based calories")
+            NSLog("⚠️ Backend should provide 2D portion estimate with actual calories (not zero)")
+            return nil
         }
 
         // Calculate volume from depth map
@@ -119,22 +117,6 @@ public final class GeometryEstimator {
             volumeML: volumeML,
             calories: calorieEstimate.mu,
             sigma: finalSigma,
-            evidence: evidence
-        )
-    }
-
-    private func fallbackEstimate() -> GeometryEstimate {
-        let evidence = parameters.fallbackEvidence
-        let calories = parameters.fallbackCalories
-
-        // Use reasonable uncertainty estimate for fallback
-        let sigma = max(parameters.minimumSigma, calories * 0.50)  // 50% uncertainty for fallback
-
-        return GeometryEstimate(
-            label: "Geometry",
-            volumeML: 350,
-            calories: calories,
-            sigma: sigma,
             evidence: evidence
         )
     }

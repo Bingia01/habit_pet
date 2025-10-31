@@ -20,6 +20,9 @@ interface ClassifierResponse {
   parentLabel?: string;
   densityGML: number;
   kcalPerG: number;
+  estimatedVolumeML?: number;  // 2D portion estimate
+  estimatedWeightG?: number;   // 2D portion estimate
+  totalCalories?: number;      // 2D portion estimate
   source?: string;
   components?: ClassifierComponent[];
 }
@@ -71,6 +74,10 @@ const DEFAULT_PORTION_GRAMS = Number(Deno.env.get("DEFAULT_PORTION_GRAMS") ?? "1
 const DEFAULT_WEIGHT_RELATIVE_SIGMA = Number(
   Deno.env.get("DEFAULT_WEIGHT_RELATIVE_SIGMA") ?? "0.35",
 );
+
+// USDA FoodData Central API
+const USDA_API_KEY = Deno.env.get("USDA_API_KEY");
+const USDA_API_URL = "https://api.nal.usda.gov/fdc/v1/foods/search";
 
 serve(async (req) => {
   const start = performance.now();
@@ -163,28 +170,65 @@ serve(async (req) => {
         evidence.add("OpenAI");
       }
 
-      // Return VLM-provided priors for Swift to use in C = V × ρ × e calculation
-      const densityGML = classifier.densityGML;
-      const kcalPerG = classifier.kcalPerG;
+      // ✅ NEW: Validate food name with USDA database
+      const usdaValidation = await validateWithUSDA(label);
 
-      // Estimate uncertainty in VLM priors
-      const densitySigma = densityGML * 0.15;
-      const kcalPerGSigma = kcalPerG * 0.20;
+      let densityGML = classifier.densityGML;
+      let kcalPerG = classifier.kcalPerG;
+      let densitySigma = densityGML * 0.15;
+      let kcalPerGSigma = kcalPerG * 0.20;
+
+      // If USDA has better calorie data, use it to refine kcalPerG
+      if (usdaValidation?.found && usdaValidation.kcalPer100g) {
+        evidence.add("USDA");
+        console.log(`✅ Using USDA-validated kcal/g for improved accuracy`);
+
+        // Convert USDA kcal/100g to kcal/g
+        const usdaKcalPerG = usdaValidation.kcalPer100g / 100;
+
+        // Use USDA value with lower uncertainty (10% instead of 20%)
+        kcalPerG = usdaKcalPerG;
+        kcalPerGSigma = usdaKcalPerG * 0.10; // Higher confidence with database validation
+
+        // Optionally use USDA description if confidence is high
+        if (usdaValidation.confidence && usdaValidation.confidence > 0.8) {
+          console.log(`✅ High-confidence USDA match, using description: "${usdaValidation.description}"`);
+        }
+      }
 
       const finalPriors = {
         density: { mu: densityGML, sigma: densitySigma },
         kcalPerG: { mu: kcalPerG, sigma: kcalPerGSigma },
       };
 
+      // Check if OpenAI provided 2D portion estimates (for devices without LiDAR)
+      let calories = 0;
+      let sigmaCalories = 0;
+      let volumeML = 0;
+      let weightGrams = 0;
+
+      if (classifier.totalCalories && classifier.totalCalories > 0) {
+        // Use 2D visual estimate from OpenAI
+        evidence.add("2D-Estimate");
+        calories = classifier.totalCalories;
+        sigmaCalories = calories * 0.25; // 25% uncertainty for 2D estimates
+        volumeML = classifier.estimatedVolumeML || 0;
+        weightGrams = classifier.estimatedWeightG || 0;
+        console.log(`✅ Using 2D portion estimate: ${calories} kcal (no LiDAR available)`);
+      } else {
+        // LiDAR device will calculate: calories = 0 signals Swift to do C = V × ρ × e
+        console.log(`📐 Returning priors for LiDAR calculation (calories will be 0)`);
+      }
+
       response = {
         items: [
           {
             label,
             confidence: classifier.confidence ?? 0,
-            calories: 0, // Swift will do C = V × ρ × e
-            sigmaCalories: 0,
-            weightGrams: 0,
-            volumeML: 0,
+            calories,        // Either 2D estimate OR 0 for LiDAR calculation
+            sigmaCalories,
+            weightGrams,
+            volumeML,
             priors: finalPriors,
             evidence: Array.from(evidence),
             path: "geometry",
@@ -225,7 +269,7 @@ async function callClassifier(
   }
 
   const prompt =
-    "You are a nutrition assistant. Identify the food in this image and provide its nutritional properties. Respond with a single JSON object using snake_case keys: label (string, specific food name like 'grilled chicken salad' or 'pepperoni pizza'), confidence (0-1, identification confidence), parent_label (string, general category like 'salad', 'pizza', 'rice bowl'), density_g_ml (number, typical density in g/mL for this food, range 0.3-1.2), kcal_per_g (number, kilocalories per gram for this specific food). Use your knowledge of food composition and nutrition databases. Do not estimate portion size or volume - only provide the food's inherent nutritional properties. Do not output any additional text.";
+    "You are a nutrition assistant. Identify the food in this image and provide its nutritional properties AND portion estimate. Respond with a single JSON object using snake_case keys: label (string, specific food name like 'grilled chicken salad' or 'pepperoni pizza'), confidence (0-1, identification confidence), parent_label (string, general category like 'salad', 'pizza', 'rice bowl'), density_g_ml (number, typical density in g/mL for this food, range 0.3-1.2), kcal_per_g (number, kilocalories per gram for this specific food), estimated_volume_ml (number, your best estimate of the food volume in milliliters based on visual cues, portion size, and common serving sizes), estimated_weight_g (number, estimated weight in grams), total_calories (number, estimated total calories for this portion). Use your knowledge of food composition, typical portion sizes, and visual analysis. Do not output any additional text.";
 
   const content: Array<Record<string, unknown>> = [
     {
@@ -269,6 +313,9 @@ async function callClassifier(
             parent_label: { type: "string" },
             density_g_ml: { type: "number" },
             kcal_per_g: { type: "number" },
+            estimated_volume_ml: { type: "number" },
+            estimated_weight_g: { type: "number" },
+            total_calories: { type: "number" },
           },
           required: ["label", "confidence", "parent_label", "density_g_ml", "kcal_per_g"],
           additionalProperties: false,
@@ -310,6 +357,9 @@ async function callClassifier(
     parentLabel: parsed.parent_label ? sanitizeLabel(parsed.parent_label) : deriveParentLabel(parsed.label),
     densityGML: parsed.density_g_ml,
     kcalPerG: parsed.kcal_per_g,
+    estimatedVolumeML: parsed.estimated_volume_ml,
+    estimatedWeightG: parsed.estimated_weight_g,
+    totalCalories: parsed.total_calories,
     source: "openai",
   };
 }
@@ -624,4 +674,84 @@ async function lookupRestaurantMenu(
     calories: parsed.calories,
     confidence: parsed.confidence,
   };
+}
+
+// USDA FoodData Central validation
+interface USDAFood {
+  fdcId: number;
+  description: string;
+  foodNutrients: Array<{
+    nutrientId: number;
+    nutrientName: string;
+    value: number;
+    unitName: string;
+  }>;
+  dataType: string;
+  score?: number;
+}
+
+async function validateWithUSDA(foodLabel: string): Promise<{
+  found: boolean;
+  kcalPer100g?: number;
+  description?: string;
+  confidence?: number;
+} | null> {
+  // Skip USDA validation if no API key configured
+  if (!USDA_API_KEY) {
+    console.log("⚠️ USDA_API_KEY not configured, skipping validation");
+    return null;
+  }
+
+  try {
+    const url = `${USDA_API_URL}?query=${encodeURIComponent(foodLabel)}&pageSize=5&api_key=${USDA_API_KEY}`;
+
+    console.log(`🔍 Querying USDA for: "${foodLabel}"`);
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      console.error(`USDA API error: ${response.status}`);
+      return null;
+    }
+
+    const data = await response.json();
+
+    if (!data.foods || data.foods.length === 0) {
+      console.log(`❌ No USDA match found for "${foodLabel}"`);
+      return { found: false };
+    }
+
+    // Get the top match
+    const topMatch: USDAFood = data.foods[0];
+
+    // Find calorie nutrient (Energy, nutrientId 1008)
+    const energyNutrient = topMatch.foodNutrients.find(
+      (n) => n.nutrientId === 1008 || n.nutrientName.toLowerCase().includes("energy")
+    );
+
+    if (!energyNutrient) {
+      console.log(`⚠️ USDA match found but no calorie data for "${topMatch.description}"`);
+      return { found: false };
+    }
+
+    // Convert to kcal per 100g (USDA typically provides kcal per 100g already)
+    const kcalPer100g = energyNutrient.value;
+
+    console.log(`✅ USDA match: "${topMatch.description}" = ${kcalPer100g} kcal/100g (score: ${topMatch.score})`);
+
+    return {
+      found: true,
+      kcalPer100g,
+      description: topMatch.description,
+      confidence: topMatch.score ? Math.min(topMatch.score / 100, 1.0) : 0.8,
+    };
+  } catch (error) {
+    console.error("USDA validation error:", error);
+    return null;
+  }
 }

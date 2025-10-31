@@ -256,7 +256,7 @@ public struct FeatureFlags: Sendable, Codable {
     public let mixtureEnabled: Bool
 
     public init(
-        routerEnabled: Bool = false,
+        routerEnabled: Bool = true,  // ✅ ENABLED BY DEFAULT - Use backend AI results
         voiEnabled: Bool = false,
         mixtureEnabled: Bool = false
     ) {
