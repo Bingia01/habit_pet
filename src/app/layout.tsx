@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Fredoka } from "next/font/google";
 import "./globals.css";
 import { DemoProvider } from "@/contexts/DemoContext";
 import { PetProvider } from "@/contexts/PetContext";
@@ -15,27 +15,33 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const fredoka = Fredoka({
+  variable: "--font-playful",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
+
 export const metadata: Metadata = {
-  title: "HabitPet - Nutrition Tracker",
-  description: "Build healthy eating habits with your virtual pet companion. Track nutrition, log meals, and care for your virtual pet.",
-  keywords: ["nutrition", "health", "tracking", "habits", "pet", "wellness"],
-  authors: [{ name: "HabitPet Team" }],
-  creator: "HabitPet",
-  publisher: "HabitPet",
+  title: "Forki - Your Pet, Your Progress",
+  description: "Track meals in 15 seconds. Watch your adorable Forki grow. Build streaks that actually stick.",
+  keywords: ["nutrition", "health", "tracking", "habits", "pet", "wellness", "forki"],
+  authors: [{ name: "Forki Team" }],
+  creator: "Forki",
+  publisher: "Forki",
   robots: "index, follow",
   openGraph: {
     type: "website",
     locale: "en_US",
     url: "https://habitpet.app",
-    title: "HabitPet - Nutrition Tracker",
-    description: "Build healthy eating habits with your virtual pet companion",
-    siteName: "HabitPet",
+    title: "Forki - Your Pet, Your Progress",
+    description: "Track meals in 15 seconds. Watch your adorable Forki grow.",
+    siteName: "Forki",
   },
   twitter: {
     card: "summary_large_image",
-    title: "HabitPet - Nutrition Tracker",
-    description: "Build healthy eating habits with your virtual pet companion",
-    creator: "@habitpet",
+    title: "Forki - Your Pet, Your Progress",
+    description: "Track meals in 15 seconds. Watch your adorable Forki grow.",
+    creator: "@forki",
   },
   appleWebApp: {
     capable: true,
@@ -68,15 +74,15 @@ export default function RootLayout({
     <html lang="en">
       <head>
         <link rel="manifest" href="/manifest.json" />
-        <meta name="theme-color" content="#10b981" />
+        <meta name="theme-color" content="#4ECDC4" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="HabitPet" />
+        <meta name="apple-mobile-web-app-title" content="Forki" />
         <link rel="apple-touch-icon" href="/icon-192x192.png" />
         <GoogleAnalytics />
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${fredoka.variable} antialiased`}
       >
         <PetProvider>
           <DemoProvider>

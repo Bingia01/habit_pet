@@ -6,8 +6,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+      --font-sans: var(--font-geist-sans);
+      --font-mono: var(--font-geist-mono);
+      --font-playful: var(--font-playful);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -44,25 +45,27 @@
 }
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --radius: 0.5rem;
+  --background: 0 0% 100%;
+  --foreground: 220 15% 15%;
+  --card: 220 14% 96%;
+  --card-foreground: 220 15% 15%;
+  --card-border: 220 13% 91%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 220 15% 15%;
+  --primary: 150 65% 50%; /* Teal to match ForkiPromote */
+  --primary-foreground: 0 0% 100%;
+  --secondary: 210 100% 95%; /* Light blue */
+  --secondary-foreground: 220 15% 20%;
+  --muted: 220 12% 90%;
+  --muted-foreground: 220 10% 45%;
+  --accent: 35 100% 92%; /* Yellow accent to match ForkiPromote */
+  --accent-foreground: 35 80% 30%;
+  --destructive: 0 84% 42%;
+  --destructive-foreground: 0 84% 98%;
+  --border: 220 13% 91%;
+  --input: 220 13% 80%;
+  --ring: 168 76% 42%; /* Teal ring */
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
