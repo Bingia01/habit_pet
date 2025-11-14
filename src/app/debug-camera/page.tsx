@@ -88,6 +88,7 @@ export default function DebugCameraPage() {
 
   useEffect(() => {
     checkBrowserSupport();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

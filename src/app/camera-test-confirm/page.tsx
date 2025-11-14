@@ -74,7 +74,7 @@ export default function CameraTestConfirmPage() {
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center space-x-2">
                     <span>1.</span>
-                    <span>Click "Open Camera"</span>
+                    <span>Click &quot;Open Camera&quot;</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <span>2.</span>
@@ -82,15 +82,15 @@ export default function CameraTestConfirmPage() {
                   </div>
                   <div className="flex items-center space-x-2">
                     <span>3.</span>
-                    <span>Click "Analyze Food"</span>
+                    <span>Click &quot;Analyze Food&quot;</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <span>4.</span>
-                    <span>See analysis with "Is this correct?"</span>
+                    <span>See analysis with &quot;Is this correct?&quot;</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <span>5.</span>
-                    <span>Click "Yes, Submit" or "No, Back"</span>
+                    <span>Click &quot;Yes, Submit&quot; or &quot;No, Back&quot;</span>
                   </div>
                 </div>
               </div>

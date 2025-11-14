@@ -15,7 +15,7 @@ function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { state } = useDemo();
-  const { pet, updateStreak } = usePet();
+  const { pet } = usePet();
   const [showFeedback, setShowFeedback] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState('');
 

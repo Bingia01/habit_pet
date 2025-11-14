@@ -48,10 +48,10 @@ export default function TestFlowPage() {
             <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4" role="alert">
               <strong className="font-bold">✅ Expected Flow:</strong>
               <ol className="mt-2 text-sm space-y-1 list-decimal list-inside">
-                <li>Click "Test Camera" → Camera opens</li>
+                <li>Click &quot;Test Camera&quot; → Camera opens</li>
                 <li>Take photo → AI analyzes food</li>
-                <li>Review result → Click "Yes, Submit" or "Wrong? Select Different"</li>
-                <li>If "Yes, Submit" → Food is logged and camera closes</li>
+                <li>Review result → Click &quot;Yes, Submit&quot; or &quot;Wrong? Select Different&quot;</li>
+                <li>If &quot;Yes, Submit&quot; → Food is logged and camera closes</li>
                 <li>User should be redirected to main page (simulated by success message)</li>
               </ol>
             </div>

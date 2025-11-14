@@ -73,7 +73,7 @@ export default function CameraFinalPage() {
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center space-x-2">
                     <span>1.</span>
-                    <span>Click "Open Camera"</span>
+                    <span>Click &quot;Open Camera&quot;</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <span>2.</span>
@@ -85,11 +85,11 @@ export default function CameraFinalPage() {
                   </div>
                   <div className="flex items-center space-x-2">
                     <span>4.</span>
-                    <span>Click "Take Photo"</span>
+                    <span>Click &quot;Take Photo&quot;</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <span>5.</span>
-                    <span>Click "Analyze Food"</span>
+                    <span>Click &quot;Analyze Food&quot;</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <span>6.</span>
@@ -97,7 +97,7 @@ export default function CameraFinalPage() {
                   </div>
                   <div className="flex items-center space-x-2">
                     <span>7.</span>
-                    <span>Click "Submit Food"</span>
+                    <span>Click &quot;Submit Food&quot;</span>
                   </div>
                 </div>
               </div>

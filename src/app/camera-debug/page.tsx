@@ -74,7 +74,7 @@ export default function CameraDebugPage() {
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center space-x-2">
                     <span>1.</span>
-                    <span>Click "Open Camera"</span>
+                    <span>Click &quot;Open Camera&quot;</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <span>2.</span>
@@ -86,7 +86,7 @@ export default function CameraDebugPage() {
                   </div>
                   <div className="flex items-center space-x-2">
                     <span>4.</span>
-                    <span>See "Take Photo" button</span>
+                    <span>See &quot;Take Photo&quot; button</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <span>5.</span>

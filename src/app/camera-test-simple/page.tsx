@@ -76,7 +76,7 @@ export default function CameraTestSimplePage() {
                 <h3 className="text-lg font-semibold mb-2">Camera Status</h3>
                 <div className="p-4 bg-gray-100 rounded-lg">
                   <p><strong>Camera Open:</strong> {showCamera ? '✅ Yes' : '❌ No'}</p>
-                  <p><strong>Expected:</strong> Camera should stay open until you click "Close Camera"</p>
+                  <p><strong>Expected:</strong> Camera should stay open until you click &quot;Close Camera&quot;</p>
                 </div>
               </div>
             </div>
