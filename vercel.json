@@ -1,0 +1,10 @@
+{
+  "buildCommand": "next build",
+  "installCommand": "npm install",
+  "git": {
+    "deploymentEnabled": {
+      "main": true
+    }
+  }
+}
+
