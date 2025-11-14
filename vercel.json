@@ -1,12 +1,6 @@
 {
   "buildCommand": "next build",
   "installCommand": "npm install",
-  "rewrites": [
-    {
-      "source": "/",
-      "destination": "/landing"
-    }
-  ],
   "git": {
     "deploymentEnabled": {
       "main": true
