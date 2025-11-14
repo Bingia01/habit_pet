@@ -1,5 +1,4 @@
-import { redirect } from 'next/navigation';
-
+// Root redirect is handled by next.config.js
 export default function Home() {
-  redirect('/landing');
+  return null;
 }

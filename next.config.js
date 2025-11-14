@@ -11,6 +11,15 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   // PWA features are handled by manifest.json and service worker
+  async redirects() {
+    return [
+      {
+        source: '/',
+        destination: '/landing',
+        permanent: true,
+      },
+    ];
+  },
 }
 
 module.exports = withSentryConfig(nextConfig, {
